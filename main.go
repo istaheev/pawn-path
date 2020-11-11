@@ -224,7 +224,7 @@ var jumpDirections = []position{
 func main() {
 	var width = 10
 	var height = 10
-	var start = position{x: 1, y: 0}
+	var start = position{x: 0, y: 0}
 
 	var solver = newSolver(width, height, jumpDirections)
 	var path = solver.findPath(start)
