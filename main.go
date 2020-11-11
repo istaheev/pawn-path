@@ -24,6 +24,9 @@ type solver struct {
 	visited []bool
 	// A list of moves forming current path
 	moves []position
+	// Helper buffers to avoid excessive memory allocations
+	movesBuf   []position
+	movesCount []int
 }
 
 func newSolver(width, height int, directions []position) solver {
@@ -34,6 +37,8 @@ func newSolver(width, height int, directions []position) solver {
 		directions: directions,
 		visited:    make([]bool, boardSize),
 		moves:      make([]position, 0, boardSize),
+		movesBuf:   make([]position, 0, len(directions)),
+		movesCount: make([]int, len(directions)),
 	}
 }
 
@@ -96,7 +101,7 @@ func (s *solver) findPath(start position) []position {
 
 	for {
 		if len(stack) == 0 {
-			// No more next moves
+			// No more moves
 			break
 		}
 
@@ -131,11 +136,11 @@ func (s *solver) findPath(start position) []position {
 // getAvailableMoves returns a list of proper moves which can be made from
 // the specified cell.
 func (s *solver) getAvailableMoves(p position) []position {
-	var moves = make([]position, 0, len(s.directions))
+	s.movesBuf = s.movesBuf[:0]
 	for _, dir := range s.directions {
 		var newPos = p.move(dir)
 		if s.canJump(newPos) {
-			moves = append(moves, newPos)
+			s.movesBuf = append(s.movesBuf, newPos)
 		}
 	}
 
@@ -144,13 +149,14 @@ func (s *solver) getAvailableMoves(p position) []position {
 	// Note: since available moves are processed from the highest index to
 	// the lowest one they are sorted by descending order of available moves
 	// count.
-	var movesCount = make([]int, len(moves))
-	for i := range moves {
-		movesCount[i] = s.getPotentialMovesCount(moves[i])
+	// var movesCount = make([]int, len(moves))
+	for i := range s.movesBuf {
+		s.movesCount[i] = s.getPotentialMovesCount(s.movesBuf[i])
 	}
 
-	sort.Slice(moves, func(i, j int) bool { return movesCount[i] > movesCount[j] })
-	return moves
+	sort.Slice(s.movesBuf, func(i, j int) bool { return s.movesCount[i] > s.movesCount[j] })
+
+	return s.movesBuf
 }
 
 // getPotentialMovesCount returns amount of proper moves which can be done
@@ -165,18 +171,35 @@ func (s *solver) getPotentialMovesCount(p position) int {
 	return count
 }
 
-func validatePath(width, height int, moves []position) bool {
-	var solver = newSolver(width, height, jumpDirections)
+// validateMoveDirection checks that current move is made into the proper
+// direction from the prev move
+func validateMoveDirection(prev, current position, directions []position) bool {
+	for _, dir := range directions {
+		if prev.move(dir) == current {
+			return true
+		}
+	}
+	return false
+}
+
+// validatePath ensures that it forms a proper pawn's path over the whole board
+func validatePath(width, height int, directions, moves []position) bool {
+	var solver = newSolver(width, height, directions)
 
 	if len(moves) != solver.boardSize() {
 		return false
 	}
 
-	for _, m := range moves {
-		if !solver.canJump(m) {
+	for i, m := range moves {
+		if i > 0 {
+			if !validateMoveDirection(moves[i-1], m, directions) {
+				return false
+			}
+		}
+
+		if !solver.jump(m) {
 			return false
 		}
-		solver.setVisited(m, true)
 	}
 
 	return true
@@ -210,8 +233,12 @@ func main() {
 		for i := range path {
 			fmt.Printf("%v\n", path[i])
 		}
-		var valid = validatePath(width, height, path)
-		fmt.Printf("validate: %v", valid)
+		var valid = validatePath(width, height, jumpDirections, path)
+		if valid {
+			fmt.Printf("Path is correct")
+		} else {
+			fmt.Printf("Path is incorrect")
+		}
 	} else {
 		fmt.Println("Path not found")
 	}
